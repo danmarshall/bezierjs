@@ -27,7 +27,7 @@ module BezierJs {
             return utils.pointsToString(this.points);
         }
 
-        public addCurve(curve) {
+        public addCurve(curve: Bezier) {
             this.curves.push(curve);
             this._3d = this._3d || curve._3d;
         }

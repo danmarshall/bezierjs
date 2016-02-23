@@ -68,6 +68,25 @@ module BezierJs {
         s: number;
     }
 
+    export interface Shape {
+        startcap: BezierCap;
+        forward: Bezier;
+        back: Bezier;
+        endcap: BezierCap;
+        bbox: BBox;
+    }
+
+    export interface ABC {
+        A: Point;
+        B: Point;
+        C: Point;
+    }
+
+    export interface Closest {
+        mdist: number;
+        mpos: number;
+    }
+
     // math-inlining.
     var abs = Math.abs,
         min = Math.min,
@@ -101,7 +120,6 @@ module BezierJs {
         public points: Point[];
         public dims: string[];
         public dimlen: number;
-        public virtual: boolean;
 
         constructor(points: Point[]);
         constructor(coords: number[]);
@@ -180,7 +198,7 @@ module BezierJs {
             return new Bezier(list);
         }
 
-        static getABC(n: number, S: Point, B: Point, E: Point, t: number) {
+        static getABC(n: number, S: Point, B: Point, E: Point, t: number): ABC {
             if (typeof t === "undefined") { t = 0.5; }
             var u = utils.projectionratio(t, n),
                 um = 1 - u,
@@ -247,7 +265,7 @@ module BezierJs {
             return utils.pointsToString(this.points);
         }
 
-        public toSVG(relative) {
+        public toSVG() {
             if (this._3d) return '';
             var p = this.points,
                 x = p[0].x,
@@ -673,9 +691,9 @@ module BezierJs {
             return pass2;
         }
 
-        public scale(d: Function);
-        public scale(d: number);
-        public scale(d: any) {
+        public scale(d: Function): Bezier;
+        public scale(d: number): Bezier;
+        public scale(d: any): Bezier {
             var order = this.order;
             var distanceFn: (d: number) => number;
             if (typeof d === "function") { distanceFn = d; }
@@ -789,7 +807,7 @@ module BezierJs {
         public outlineshapes(d1: number, d2: number) {
             d2 = d2 || d1;
             var outline = this.outline(d1, d2).curves;
-            var shapes = [];
+            var shapes: Shape[] = [];
             for (var i = 1, len = outline.length; i < len / 2; i++) {
                 var shape = utils.makeshape(outline[i], outline[len - i]);
                 shape.startcap.virtual = (i > 1);
@@ -799,8 +817,8 @@ module BezierJs {
             return shapes;
         }
 
-        public intersects(curve: Bezier);
-        public intersects(curve: Line);
+        public intersects(curve: Bezier): string[] | number[];
+        public intersects(curve: Line): string[] | number[];
         public intersects(item: any): string[] | number[] {
             if (!item) return this.selfintersects();
             var line = item as Line;
@@ -944,6 +962,10 @@ module BezierJs {
             while (e < 1);
             return circles;
         }
+    }
+
+    export class BezierCap extends Bezier {
+        public virtual: boolean;
     }
 }
 

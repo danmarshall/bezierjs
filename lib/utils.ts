@@ -135,7 +135,7 @@ module BezierJs.utils {
         return JSON.parse(JSON.stringify(obj));
     }
 
-    export function angle(o, v1, v2) {
+    export function angle(o: Point, v1: Point, v2: Point) {
         var dx1 = v1.x - o.x,
             dy1 = v1.y - o.y,
             dx2 = v2.x - o.x,
@@ -162,7 +162,7 @@ module BezierJs.utils {
         return sqrt(dx * dx + dy * dy);
     }
 
-    export function closest(LUT: Point[], point: Point) {
+    export function closest(LUT: Point[], point: Point): Closest {
         var mdist = pow(2, 63), mpos: number, d: number;
         LUT.forEach((p: Point, idx: number) => {
             d = utils.dist(point, p);
@@ -242,21 +242,21 @@ module BezierJs.utils {
         }
     }
 
-    export function shapeintersections(s1, bbox1, s2, bbox2) {
+    export function shapeintersections(s1: Shape, bbox1: BBox, s2: Shape, bbox2: BBox): string[][] | number[][] {
         if (!utils.bboxoverlap(bbox1, bbox2)) return [];
         var intersections = [];
         var a1 = [s1.startcap, s1.forward, s1.back, s1.endcap];
         var a2 = [s2.startcap, s2.forward, s2.back, s2.endcap];
         a1.forEach(function (l1) {
-            if (l1.virtual) return;
+            if ((<BezierCap>l1).virtual) return;
             a2.forEach(function (l2) {
-                if (l2.virtual) return;
+                if ((<BezierCap>l2).virtual) return;
                 var iss = l1.intersects(l2);
                 if (iss.length > 0) {
-                    iss.c1 = l1;
-                    iss.c2 = l2;
-                    iss.s1 = s1;
-                    iss.s2 = s2;
+                    iss['c1'] = l1;
+                    iss['c2'] = l2;
+                    iss['s1'] = s1;
+                    iss['s2'] = s2;
                     intersections.push(iss);
                 }
             });
@@ -264,11 +264,11 @@ module BezierJs.utils {
         return intersections;
     }
 
-    export function makeshape(forward: Bezier, back: Bezier) {
+    export function makeshape(forward: Bezier, back: Bezier): Shape {
         var bpl = back.points.length;
         var fpl = forward.points.length;
-        var start = utils.makeline(back.points[bpl - 1], forward.points[0]);
-        var end = utils.makeline(forward.points[fpl - 1], back.points[0]);
+        var start = utils.makeline(back.points[bpl - 1], forward.points[0]) as BezierCap;
+        var end = utils.makeline(forward.points[fpl - 1], back.points[0]) as BezierCap;
         var shape = {
             startcap: start,
             forward: forward,
