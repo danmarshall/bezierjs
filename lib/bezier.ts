@@ -801,7 +801,7 @@ module BezierJs {
 
         public intersects(curve: Bezier);
         public intersects(curve: Line);
-        public intersects(item: any) {
+        public intersects(item: any): string[] | number[] {
             if (!item) return this.selfintersects();
             var line = item as Line;
             if (line.p1 && line.p2) {
@@ -829,7 +829,7 @@ module BezierJs {
             // "simple" curves cannot intersect with their direct
             // neighbour, so for each segment X we check whether
             // it intersects [0:x-2][x+2:last].
-            var i, len = reduced.length - 2, results = [], result, left, right;
+            var i, len = reduced.length - 2, results: string[] = [], result, left, right;
             for (i = 0; i < len; i++) {
                 left = reduced.slice(i, i + 1);
                 right = reduced.slice(i + 2);
@@ -850,7 +850,7 @@ module BezierJs {
                 });
             });
             // step 2: for each pairing, run through the convergence algorithm.
-            var intersections = [];
+            var intersections: string[] = [];
             pairs.forEach(function (pair) {
                 var result = utils.pairiteration(pair.left, pair.right);
                 if (result.length > 0) {

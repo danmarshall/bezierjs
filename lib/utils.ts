@@ -309,7 +309,7 @@ module BezierJs.utils {
         return points.map(d);
     }
 
-    export function roots(points: Point[], line: Line) {
+    export function roots(points: Point[], line: Line): number[] {
         line = line || { p1: { x: 0, y: 0 }, p2: { x: 1, y: 0 } };
         var order = points.length - 1;
         var p = utils.align(points, line);
@@ -447,7 +447,7 @@ module BezierJs.utils {
         pairs = pairs.filter(function (pair) {
             return utils.bboxoverlap(pair.left.bbox(), pair.right.bbox());
         });
-        var results = [];
+        var results: string[] = [];
         if (pairs.length === 0) return results;
         pairs.forEach(function (pair) {
             results = results.concat(
