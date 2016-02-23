@@ -5,13 +5,79 @@
 
   This code is MIT licensed.
 **/
-var BezierJs;
-(function (BezierJs) {
+
+module BezierJs {
+
     "use strict";
+
+    export interface Point {
+        x: number;
+        y: number;
+        z?: number;
+    }
+
+    export interface Projection extends Point {
+        t?: number;
+        d?: number;
+    }
+
+    export interface Inflection {
+        x: number[];
+        y: number[];
+        z: number[];
+        values: number[];
+    }
+
+    export interface Offset extends Point {
+        c: Point;
+        n: Point;
+    }
+
+    export interface Pair {
+        left: Bezier;
+        right: Bezier;
+    }
+
+    export interface Split extends Pair {
+        span: Point[];
+        _t1?: number;
+        _t2?: number;
+    }
+
+    export interface MinMax {
+        min: number;
+        mid?: number;
+        max: number;
+        size?: number;
+    }
+
+    export interface BBox {
+        x: MinMax;
+        y: MinMax;
+        z?: MinMax;
+    }
+
+    export interface Line {
+        p1: Point;
+        p2: Point;
+    }
+
+    export interface Arc extends Point {
+        e: number;
+        r: number;
+        s: number;
+    }
+
     // math-inlining.
-    var abs = Math.abs, min = Math.min, max = Math.max, acos = Math.acos, sqrt = Math.sqrt, pi = Math.PI, 
-    // a zero coordinate, which is surprisingly useful
-    ZERO = { x: 0, y: 0, z: 0 };
+    var abs = Math.abs,
+        min = Math.min,
+        max = Math.max,
+        acos = Math.acos,
+        sqrt = Math.sqrt,
+        pi = Math.PI,
+        // a zero coordinate, which is surprisingly useful
+        ZERO = { x: 0, y: 0, z: 0 };
+
     /**
      * Bezier curve constructor. The constructor argument can be one of three things:
      *
@@ -20,11 +86,30 @@ var BezierJs;
      * 3. numerical array/12 ordered x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4
      *
      */
-    var Bezier = (function () {
-        function Bezier(coords) {
-            this._lut = [];
+    export class Bezier {
+
+        private clockwise: boolean;
+        private _linear: boolean;
+
+        public _3d: boolean;
+        public _t1: number;
+        public _t2: number;
+        public _lut: Point[] = [];
+
+        public dpoints: Point[][];
+        public order: number;
+        public points: Point[];
+        public dims: string[];
+        public dimlen: number;
+        public virtual: boolean;
+
+        constructor(points: Point[]);
+        constructor(coords: number[]);
+        constructor(n1: number, n2: number, n3: number, n4: number, n5: number, n6: number, n7: number, n8: number);
+        constructor(p1: Point, p2: Point, p3: Point, p4?: Point);
+        constructor(coords: any) {
             var args = (coords && coords.forEach) ? coords : [].slice.call(arguments);
-            var coordlen;
+            var coordlen: number;
             if (typeof args[0] === "object") {
                 coordlen = args.length;
                 var newargs = [];
@@ -46,8 +131,7 @@ var BezierJs;
                     }
                     higher = true;
                 }
-            }
-            else {
+            } else {
                 if (len !== 6 && len !== 8 && len !== 9 && len !== 12) {
                     if (arguments.length !== 1) {
                         throw new Error("Only new Bezier(point[]) is accepted for 4th and higher order curves");
@@ -56,27 +140,23 @@ var BezierJs;
             }
             var _3d = (!higher && (len === 9 || len === 12)) || (coords && coords[0] && typeof coords[0].z !== "undefined");
             this._3d = _3d;
-            var points = [];
+            var points: Point[] = [];
             for (var idx = 0, step = (_3d ? 3 : 2); idx < len; idx += step) {
-                var point = {
+                var point: Point = {
                     x: args[idx],
                     y: args[idx + 1]
                 };
-                if (_3d) {
-                    point.z = args[idx + 2];
-                }
-                ;
+                if (_3d) { point.z = args[idx + 2] };
                 points.push(point);
             }
             this.order = points.length - 1;
             this.points = points;
             var dims = ['x', 'y'];
-            if (_3d)
-                dims.push('z');
+            if (_3d) dims.push('z');
             this.dims = dims;
             this.dimlen = dims.length;
             (function (curve) {
-                var a = BezierJs.utils.align(points, { p1: points[0], p2: points[curve.order] });
+                var a = utils.align(points, { p1: points[0], p2: points[curve.order] });
                 for (var i = 0; i < a.length; i++) {
                     if (abs(a[i].y) > 0.0001) {
                         curve._linear = false;
@@ -84,93 +164,108 @@ var BezierJs;
                     }
                 }
                 curve._linear = true;
-            }(this));
+            } (this));
             this._t1 = 0;
             this._t2 = 1;
             this.update();
         }
-        Bezier.fromSVG = function (svgString) {
-            var list = svgString.match(/[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?/g).map(parseFloat);
+
+        static fromSVG(svgString: string) {
+            var list: number[] = svgString.match(/[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?/g).map(parseFloat);
             var relative = /[cq]/.test(svgString);
-            if (!relative)
-                return new Bezier(list);
+            if (!relative) return new Bezier(list);
             list = list.map(function (v, i) {
                 return i < 2 ? v : v + list[i % 2];
             });
             return new Bezier(list);
-        };
-        Bezier.getABC = function (n, S, B, E, t) {
-            if (typeof t === "undefined") {
-                t = 0.5;
-            }
-            var u = BezierJs.utils.projectionratio(t, n), um = 1 - u, C = {
-                x: u * S.x + um * E.x,
-                y: u * S.y + um * E.y
-            }, s = BezierJs.utils.abcratio(t, n), A = {
-                x: B.x + (B.x - C.x) / s,
-                y: B.y + (B.y - C.y) / s
-            };
+        }
+
+        static getABC(n: number, S: Point, B: Point, E: Point, t: number) {
+            if (typeof t === "undefined") { t = 0.5; }
+            var u = utils.projectionratio(t, n),
+                um = 1 - u,
+                C: Point = {
+                    x: u * S.x + um * E.x,
+                    y: u * S.y + um * E.y
+                },
+                s = utils.abcratio(t, n),
+                A: Point = {
+                    x: B.x + (B.x - C.x) / s,
+                    y: B.y + (B.y - C.y) / s
+                };
             return { A: A, B: B, C: C };
-        };
-        Bezier.quadraticFromPoints = function (p1, p2, p3, t) {
-            if (typeof t === "undefined") {
-                t = 0.5;
-            }
+        }
+
+        static quadraticFromPoints(p1: Point, p2: Point, p3: Point, t: number) {
+            if (typeof t === "undefined") { t = 0.5; }
             // shortcuts, although they're really dumb
-            if (t === 0) {
-                return new Bezier(p2, p2, p3);
-            }
-            if (t === 1) {
-                return new Bezier(p1, p2, p2);
-            }
+            if (t === 0) { return new Bezier(p2, p2, p3); }
+            if (t === 1) { return new Bezier(p1, p2, p2); }
             // real fitting.
             var abc = Bezier.getABC(2, p1, p2, p3, t);
             return new Bezier(p1, abc.A, p3);
-        };
-        Bezier.cubicFromPoints = function (S, B, E, t, d1) {
-            if (typeof t === "undefined") {
-                t = 0.5;
-            }
+        }
+
+        static cubicFromPoints(S: Point, B: Point, E: Point, t: number, d1: number) {
+            if (typeof t === "undefined") { t = 0.5; }
             var abc = Bezier.getABC(3, S, B, E, t);
-            if (typeof d1 === "undefined") {
-                d1 = BezierJs.utils.dist(B, abc.C);
-            }
+            if (typeof d1 === "undefined") { d1 = utils.dist(B, abc.C); }
             var d2 = d1 * (1 - t) / t;
-            var selen = BezierJs.utils.dist(S, E), lx = (E.x - S.x) / selen, ly = (E.y - S.y) / selen, bx1 = d1 * lx, by1 = d1 * ly, bx2 = d2 * lx, by2 = d2 * ly;
+
+            var selen = utils.dist(S, E),
+                lx = (E.x - S.x) / selen,
+                ly = (E.y - S.y) / selen,
+                bx1 = d1 * lx,
+                by1 = d1 * ly,
+                bx2 = d2 * lx,
+                by2 = d2 * ly;
             // derivation of new hull coordinates
-            var e1 = { x: B.x - bx1, y: B.y - by1 }, e2 = { x: B.x + bx2, y: B.y + by2 }, A = abc.A, v1 = { x: A.x + (e1.x - A.x) / (1 - t), y: A.y + (e1.y - A.y) / (1 - t) }, v2 = { x: A.x + (e2.x - A.x) / (t), y: A.y + (e2.y - A.y) / (t) }, nc1 = { x: S.x + (v1.x - S.x) / (t), y: S.y + (v1.y - S.y) / (t) }, nc2 = { x: E.x + (v2.x - E.x) / (1 - t), y: E.y + (v2.y - E.y) / (1 - t) };
+            var e1 = { x: B.x - bx1, y: B.y - by1 },
+                e2 = { x: B.x + bx2, y: B.y + by2 },
+                A = abc.A,
+                v1: Point = { x: A.x + (e1.x - A.x) / (1 - t), y: A.y + (e1.y - A.y) / (1 - t) },
+                v2: Point = { x: A.x + (e2.x - A.x) / (t), y: A.y + (e2.y - A.y) / (t) },
+                nc1: Point = { x: S.x + (v1.x - S.x) / (t), y: S.y + (v1.y - S.y) / (t) },
+                nc2: Point = { x: E.x + (v2.x - E.x) / (1 - t), y: E.y + (v2.y - E.y) / (1 - t) };
             // ...done
             return new Bezier(S, nc1, nc2, E);
         };
-        ;
-        Bezier.getUtils = function () {
-            return BezierJs.utils;
-        };
-        Bezier.prototype.getUtils = function () {
-            return BezierJs.utils;
-        };
-        Bezier.prototype.valueOf = function () {
+
+        static getUtils() {
+            return utils;
+        }
+
+        public getUtils() {
+            return utils;
+        }
+
+        public valueOf() {
             return this.toString();
-        };
-        Bezier.prototype.toString = function () {
-            return BezierJs.utils.pointsToString(this.points);
-        };
-        Bezier.prototype.toSVG = function (relative) {
-            if (this._3d)
-                return '';
-            var p = this.points, x = p[0].x, y = p[0].y, s = ["M", x, y, (this.order === 2 ? "Q" : "C")];
+        }
+
+        public toString() {
+            return utils.pointsToString(this.points);
+        }
+
+        public toSVG(relative) {
+            if (this._3d) return '';
+            var p = this.points,
+                x = p[0].x,
+                y = p[0].y,
+                s = ["M", x, y, (this.order === 2 ? "Q" : "C")];
             for (var i = 1, last = p.length; i < last; i++) {
                 s.push(p[i].x);
                 s.push(p[i].y);
             }
             return s.join(" ");
-        };
-        Bezier.prototype.update = function () {
+        }
+
+        public update() {
             // one-time compute derivative coordinates
             this.dpoints = [];
-            for (var p = this.points, d = p.length, c = d - 1; d > 1; d--, c--) {
-                var list = [];
-                for (var j = 0, dpt; j < c; j++) {
+            for (var p = this.points, d = p.length, c = d - 1; d > 1; d-- , c--) {
+                var list: Point[] = [];
+                for (var j = 0, dpt: Point; j < c; j++) {
                     dpt = {
                         x: c * (p[j + 1].x - p[j].x),
                         y: c * (p[j + 1].y - p[j].y)
@@ -184,55 +279,64 @@ var BezierJs;
                 p = list;
             }
             this.computedirection();
-        };
-        Bezier.prototype.computedirection = function () {
+        }
+
+        public computedirection() {
             var points = this.points;
-            var angle = BezierJs.utils.angle(points[0], points[this.order], points[1]);
+            var angle = utils.angle(points[0], points[this.order], points[1]);
             this.clockwise = angle > 0;
-        };
-        Bezier.prototype.length = function () {
-            return BezierJs.utils.length(this.derivative.bind(this));
-        };
-        Bezier.prototype.getLUT = function (steps) {
+        }
+
+        public length() {
+            return utils.length(this.derivative.bind(this));
+        }
+
+        public getLUT(steps?: number) {
             steps = steps || 100;
-            if (this._lut.length === steps) {
-                return this._lut;
-            }
+            if (this._lut.length === steps) { return this._lut; }
             this._lut = [];
             for (var t = 0; t <= steps; t++) {
                 this._lut.push(this.compute(t / steps));
             }
             return this._lut;
-        };
-        Bezier.prototype.on = function (point, error) {
+        }
+
+        public on(point: Point, error: number) {
             error = error || 5;
             var lut = this.getLUT(), hits = [], c, t = 0;
             for (var i = 0; i < lut.length; i++) {
                 c = lut[i];
-                if (BezierJs.utils.dist(c, point) < error) {
-                    hits.push(c);
+                if (utils.dist(c, point) < error) {
+                    hits.push(c)
                     t += i / lut.length;
                 }
             }
-            if (!hits.length)
-                return 0;
+            if (!hits.length) return 0;
             return t /= hits.length;
-        };
-        Bezier.prototype.project = function (point) {
+        }
+
+        public project(point: Point): Projection {
             // step 1: coarse check
-            var LUT = this.getLUT(), l = LUT.length - 1, closest = BezierJs.utils.closest(LUT, point), mdist = closest.mdist, mpos = closest.mpos;
+            var LUT = this.getLUT(), l = LUT.length - 1,
+                closest = utils.closest(LUT, point),
+                mdist = closest.mdist,
+                mpos = closest.mpos;
             if (mpos === 0 || mpos === l) {
-                var t_1 = mpos / l, pt = this.compute(t_1);
-                pt.t = t_1;
+                let t = mpos / l, pt: Projection = this.compute(t);
+                pt.t = t;
                 pt.d = mdist;
                 return pt;
             }
+
             // step 2: fine check
-            var ft, t, p, d, t1 = (mpos - 1) / l, t2 = (mpos + 1) / l, step = 0.1 / l;
+            var ft, t, p, d,
+                t1 = (mpos - 1) / l,
+                t2 = (mpos + 1) / l,
+                step = 0.1 / l;
             mdist += 1;
             for (t = t1, ft = t; t < t2 + step; t += step) {
                 p = this.compute(t);
-                d = BezierJs.utils.dist(point, p);
+                d = utils.dist(point, p);
                 if (d < mdist) {
                     mdist = d;
                     ft = t;
@@ -242,38 +346,40 @@ var BezierJs;
             p.t = ft;
             p.d = mdist;
             return p;
-        };
-        Bezier.prototype.get = function (t) {
+        }
+
+        public get(t: number) {
             return this.compute(t);
-        };
-        Bezier.prototype.point = function (idx) {
+        }
+
+        public point(idx: number) {
             return this.points[idx];
-        };
-        Bezier.prototype.compute = function (t) {
+        }
+
+        public compute(t: number): Point {
             // shortcuts
-            if (t === 0) {
-                return this.points[0];
-            }
-            if (t === 1) {
-                return this.points[this.order];
-            }
+            if (t === 0) { return this.points[0]; }
+            if (t === 1) { return this.points[this.order]; }
+
             var p = this.points;
             var mt = 1 - t;
-            var ret;
+            var ret: Point;
+
             // linear?
             if (this.order === 1) {
                 ret = {
                     x: mt * p[0].x + t * p[1].x,
                     y: mt * p[0].y + t * p[1].y
                 };
-                if (this._3d) {
-                    ret.z = mt * p[0].z + t * p[1].z;
-                }
+                if (this._3d) { ret.z = mt * p[0].z + t * p[1].z; }
                 return ret;
             }
+
             // quadratic/cubic curve?
             if (this.order < 4) {
-                var mt2 = mt * mt, t2 = t * t, a, b, c, d = 0;
+                var mt2 = mt * mt,
+                    t2 = t * t,
+                    a, b, c, d = 0;
                 if (this.order === 2) {
                     p = [p[0], p[1], p[2], ZERO];
                     a = mt2;
@@ -295,6 +401,7 @@ var BezierJs;
                 }
                 return ret;
             }
+
             // higher order curves: use de Casteljau's computation
             var dCpts = JSON.parse(JSON.stringify(this.points));
             while (dCpts.length > 1) {
@@ -304,14 +411,15 @@ var BezierJs;
                         y: dCpts[i].y + (dCpts[i + 1].y - dCpts[i].y) * t
                     };
                     if (typeof dCpts[i].z !== "undefined") {
-                        dCpts[i] = dCpts[i].z + (dCpts[i + 1].z - dCpts[i].z) * t;
+                        dCpts[i] = dCpts[i].z + (dCpts[i + 1].z - dCpts[i].z) * t
                     }
                 }
                 dCpts.splice(dCpts.length - 1, 1);
             }
             return dCpts[0];
-        };
-        Bezier.prototype.raise = function () {
+        }
+
+        public raise() {
             var p = this.points, np = [p[0]], k = p.length, pi, pim;
             for (var i = 1; i < k; i++) {
                 pi = p[i];
@@ -323,20 +431,15 @@ var BezierJs;
             }
             np[k] = p[k - 1];
             return new Bezier(np);
-        };
-        Bezier.prototype.derivative = function (t) {
-            var mt = 1 - t, a, b, c = 0, p = this.dpoints[0];
-            if (this.order === 2) {
-                p = [p[0], p[1], ZERO];
-                a = mt;
-                b = t;
-            }
-            if (this.order === 3) {
-                a = mt * mt;
-                b = mt * t * 2;
-                c = t * t;
-            }
-            var ret = {
+        }
+
+        public derivative(t: number) {
+            var mt = 1 - t,
+                a, b, c = 0,
+                p = this.dpoints[0];
+            if (this.order === 2) { p = [p[0], p[1], ZERO]; a = mt; b = t; }
+            if (this.order === 3) { a = mt * mt; b = mt * t * 2; c = t * t; }
+            var ret: Point = {
                 x: a * p[0].x + b * p[1].x + c * p[2].x,
                 y: a * p[0].y + b * p[1].y + c * p[2].y
             };
@@ -344,27 +447,30 @@ var BezierJs;
                 ret.z = a * p[0].z + b * p[1].z + c * p[2].z;
             }
             return ret;
-        };
-        Bezier.prototype.normal = function (t) {
+        }
+
+        public normal(t: number) {
             return this._3d ? this.__normal3(t) : this.__normal2(t);
-        };
-        Bezier.prototype.__normal2 = function (t) {
+        }
+
+        private __normal2(t: number): Point {
             var d = this.derivative(t);
-            var q = sqrt(d.x * d.x + d.y * d.y);
+            var q = sqrt(d.x * d.x + d.y * d.y)
             return { x: -d.y / q, y: d.x / q };
-        };
-        Bezier.prototype.__normal3 = function (t) {
+        }
+
+        private __normal3(t: number): Point {
             throw 'not implemented';
-        };
-        Bezier.prototype.__normal = function (t) {
+        }
+
+        private __normal(t: number) {
             // see http://stackoverflow.com/questions/25453159
-            var r1 = this.derivative(t), r2 = this.derivative(t + 0.01), q1 = sqrt(r1.x * r1.x + r1.y * r1.y + r1.z * r1.z), q2 = sqrt(r2.x * r2.x + r2.y * r2.y + r2.z * r2.z);
-            r1.x /= q1;
-            r1.y /= q1;
-            r1.z /= q1;
-            r2.x /= q2;
-            r2.y /= q2;
-            r2.z /= q2;
+            var r1 = this.derivative(t),
+                r2 = this.derivative(t + 0.01),
+                q1 = sqrt(r1.x * r1.x + r1.y * r1.y + r1.z * r1.z),
+                q2 = sqrt(r2.x * r2.x + r2.y * r2.y + r2.z * r2.z);
+            r1.x /= q1; r1.y /= q1; r1.z /= q1;
+            r2.x /= q2; r2.y /= q2; r2.z /= q2;
             // cross product
             var c = {
                 x: r2.y * r1.z - r2.z * r1.y,
@@ -372,9 +478,7 @@ var BezierJs;
                 z: r2.x * r1.y - r2.y * r1.x
             };
             var m = sqrt(c.x * c.x + c.y * c.y + c.z * c.z);
-            c.x /= m;
-            c.y /= m;
-            c.z /= m;
+            c.x /= m; c.y /= m; c.z /= m;
             // rotation matrix
             var R = [c.x * c.x, c.x * c.y - c.z, c.x * c.z + c.y,
                 c.x * c.y + c.z, c.y * c.y, c.y * c.z - c.x,
@@ -386,66 +490,73 @@ var BezierJs;
                 z: R[6] * r1.x + R[7] * r1.y + R[8] * r1.z
             };
             return n;
-        };
-        Bezier.prototype.hull = function (t) {
-            var p = this.points, _p = [], pt, q = [], idx = 0, i = 0, l = 0;
+        }
+
+        public hull(t: number) {
+            var p = this.points,
+                _p: Point[] = [],
+                pt: Point,
+                q: Point[] = [],
+                idx = 0,
+                i = 0,
+                l = 0;
             q[idx++] = p[0];
             q[idx++] = p[1];
             q[idx++] = p[2];
-            if (this.order === 3) {
-                q[idx++] = p[3];
-            }
+            if (this.order === 3) { q[idx++] = p[3]; }
             // we lerp between all points at each iteration, until we have 1 point left.
             while (p.length > 1) {
                 _p = [];
                 for (i = 0, l = p.length - 1; i < l; i++) {
-                    pt = BezierJs.utils.lerp(t, p[i], p[i + 1]);
+                    pt = utils.lerp(t, p[i], p[i + 1]);
                     q[idx++] = pt;
                     _p.push(pt);
                 }
                 p = _p;
             }
             return q;
-        };
-        Bezier.prototype.split = function (t1, t2) {
+        }
+
+        public split(t1: number, t2?: number): Bezier | Split {
             // shortcuts
-            if (t1 === 0 && !!t2) {
-                return this.split(t2).left;
-            }
-            if (t2 === 1) {
-                return this.split(t1).right;
-            }
+            if (t1 === 0 && !!t2) { return (<Split>this.split(t2)).left; }
+            if (t2 === 1) { return (<Split>this.split(t1)).right; }
+
             // no shortcut: use "de Casteljau" iteration.
             var q = this.hull(t1);
-            var result = {
+            var result: Split = {
                 left: this.order === 2 ? new Bezier([q[0], q[3], q[5]]) : new Bezier([q[0], q[4], q[7], q[9]]),
                 right: this.order === 2 ? new Bezier([q[5], q[4], q[2]]) : new Bezier([q[9], q[8], q[6], q[3]]),
                 span: q
             };
+
             // make sure we bind _t1/_t2 information!
-            result.left._t1 = BezierJs.utils.map(0, 0, 1, this._t1, this._t2);
-            result.left._t2 = BezierJs.utils.map(t1, 0, 1, this._t1, this._t2);
-            result.right._t1 = BezierJs.utils.map(t1, 0, 1, this._t1, this._t2);
-            result.right._t2 = BezierJs.utils.map(1, 0, 1, this._t1, this._t2);
+            result.left._t1 = utils.map(0, 0, 1, this._t1, this._t2);
+            result.left._t2 = utils.map(t1, 0, 1, this._t1, this._t2);
+            result.right._t1 = utils.map(t1, 0, 1, this._t1, this._t2);
+            result.right._t2 = utils.map(1, 0, 1, this._t1, this._t2);
+
             // if we have no t2, we're done
-            if (!t2) {
-                return result;
-            }
+            if (!t2) { return result; }
+
             // if we have a t2, split again:
-            t2 = BezierJs.utils.map(t2, t1, 1, 0, 1);
-            var subsplit = result.right.split(t2);
+            t2 = utils.map(t2, t1, 1, 0, 1);
+            var subsplit = result.right.split(t2) as Split;
             return subsplit.left;
-        };
-        Bezier.prototype.inflections = function () {
-            var _this = this;
-            var dims = this.dims, result = { x: [], y: [], z: [], values: [] }, roots = [], p, mfn;
-            dims.forEach(function (dim) {
+        }
+
+        public inflections() {
+            var dims = this.dims,
+                result: Inflection = { x: [], y: [], z: [], values: [] },
+                roots = [],
+                p, mfn;
+            dims.forEach((dim) => {
                 mfn = function (v) { return v[dim]; };
-                p = _this.dpoints[0].map(mfn);
-                result[dim] = BezierJs.utils.droots(p);
-                if (_this.order === 3) {
-                    p = _this.dpoints[1].map(mfn);
-                    result[dim] = result[dim].concat(BezierJs.utils.droots(p));
+                p = this.dpoints[0].map(mfn);
+                result[dim] = utils.droots(p);
+                if (this.order === 3) {
+                    p = this.dpoints[1].map(mfn);
+                    result[dim] = result[dim].concat(utils.droots(p));
                 }
                 result[dim] = result[dim].filter(function (t) { return (t >= 0 && t <= 1); });
                 roots = roots.concat(result[dim].sort());
@@ -453,24 +564,27 @@ var BezierJs;
             roots.sort();
             result.values = roots;
             return result;
-        };
-        Bezier.prototype.bbox = function () {
-            var _this = this;
+        }
+
+        public bbox() {
             var inflections = this.inflections(), result = {};
-            this.dims.forEach(function (d) {
-                result[d] = BezierJs.utils.getminmax(_this, d, inflections[d]);
+            this.dims.forEach((d: string) => {
+                result[d] = utils.getminmax(this, d, inflections[d]);
             }, this);
-            return result;
-        };
-        Bezier.prototype.overlaps = function (curve) {
-            var lbbox = this.bbox(), tbbox = curve.bbox();
-            return BezierJs.utils.bboxoverlap(lbbox, tbbox);
-        };
-        Bezier.prototype.offset = function (t, d) {
+            return result as BBox;
+        }
+
+        public overlaps(curve: Bezier) {
+            var lbbox = this.bbox(),
+                tbbox = curve.bbox();
+            return utils.bboxoverlap(lbbox, tbbox);
+        }
+
+        public offset(t: number, d?: number): Offset | Bezier[] {
             if (typeof d !== "undefined") {
                 var c = this.get(t);
                 var n = this.normal(t);
-                var ret = {
+                var ret: Offset = {
                     c: c,
                     n: n,
                     x: c.x + n.x * d,
@@ -478,80 +592,72 @@ var BezierJs;
                 };
                 if (this._3d) {
                     ret.z = c.z + n.z * d;
-                }
-                ;
+                };
                 return ret;
             }
             if (this._linear) {
                 var nv = this.normal(0);
                 var coords = this.points.map(function (p) {
-                    var ret = {
+                    var ret: Point = {
                         x: p.x + t * nv.x,
                         y: p.y + t * nv.y
                     };
-                    if (p.z && n.z) {
-                        ret.z = p.z + t * nv.z;
-                    }
+                    if (p.z && n.z) { ret.z = p.z + t * nv.z; }
                     return ret;
                 });
                 return [new Bezier(coords)];
             }
-            var reduced = this.reduce();
-            return reduced.map(function (s) {
+            var reduced = this.reduce() as Bezier[];
+            return reduced.map(function (s: Bezier) {
                 return s.scale(t);
             });
-        };
-        Bezier.prototype.simple = function () {
+        }
+
+        public simple() {
             if (this.order === 3) {
-                var a1 = BezierJs.utils.angle(this.points[0], this.points[3], this.points[1]);
-                var a2 = BezierJs.utils.angle(this.points[0], this.points[3], this.points[2]);
-                if (a1 > 0 && a2 < 0 || a1 < 0 && a2 > 0)
-                    return false;
+                var a1 = utils.angle(this.points[0], this.points[3], this.points[1]);
+                var a2 = utils.angle(this.points[0], this.points[3], this.points[2]);
+                if (a1 > 0 && a2 < 0 || a1 < 0 && a2 > 0) return false;
             }
             var n1 = this.normal(0);
             var n2 = this.normal(1);
             var s = n1.x * n2.x + n1.y * n2.y;
-            if (this._3d) {
-                s += n1.z * n2.z;
-            }
+            if (this._3d) { s += n1.z * n2.z; }
             var angle = abs(acos(s));
             return angle < pi / 3;
-        };
-        Bezier.prototype.reduce = function () {
-            var i, t1 = 0, t2 = 0, step = 0.01, segment, pass1 = [], pass2 = [];
+        }
+
+        public reduce() {
+            var i, t1 = 0, t2 = 0, step = 0.01, segment: Split | Bezier, pass1 = [], pass2: Split[] | Bezier[] = [];
             // first pass: split on inflections
             var inflections = this.inflections().values;
-            if (inflections.indexOf(0) === -1) {
-                inflections = [0].concat(inflections);
-            }
-            if (inflections.indexOf(1) === -1) {
-                inflections.push(1);
-            }
+            if (inflections.indexOf(0) === -1) { inflections = [0].concat(inflections); }
+            if (inflections.indexOf(1) === -1) { inflections.push(1); }
             for (t1 = inflections[0], i = 1; i < inflections.length; i++) {
                 t2 = inflections[i];
                 segment = this.split(t1, t2);
-                segment._t1 = t1;
-                segment._t2 = t2;
+                (<Split>segment)._t1 = t1;
+                (<Split>segment)._t2 = t2;
                 pass1.push(segment);
                 t1 = t2;
             }
             // second pass: further reduce these segments to simple segments
-            pass1.forEach(function (p1) {
+            pass1.forEach(function (p1: Bezier) {
                 t1 = 0;
                 t2 = 0;
                 while (t2 <= 1) {
                     for (t2 = t1 + step; t2 <= 1 + step; t2 += step) {
                         segment = p1.split(t1, t2);
-                        if (!segment.simple()) {
+                        if (!(<Bezier>segment).simple()) {
                             t2 -= step;
                             if (abs(t1 - t2) < step) {
                                 // we can never form a reduction
                                 return [];
                             }
                             segment = p1.split(t1, t2);
-                            segment._t1 = BezierJs.utils.map(t1, 0, 1, p1._t1, p1._t2);
-                            segment._t2 = BezierJs.utils.map(t2, 0, 1, p1._t1, p1._t2);
-                            pass2.push(segment);
+                            (<Split>segment)._t1 = utils.map(t1, 0, 1, p1._t1, p1._t2);
+                            (<Split>segment)._t2 = utils.map(t2, 0, 1, p1._t1, p1._t2);
+                            (<Split[]>pass2).push(<Split>segment);
                             t1 = t2;
                             break;
                         }
@@ -559,148 +665,166 @@ var BezierJs;
                 }
                 if (t1 < 1) {
                     segment = p1.split(t1, 1);
-                    segment._t1 = BezierJs.utils.map(t1, 0, 1, p1._t1, p1._t2);
-                    segment._t2 = p1._t2;
-                    pass2.push(segment);
+                    (<Split>segment)._t1 = utils.map(t1, 0, 1, p1._t1, p1._t2);
+                    (<Split>segment)._t2 = p1._t2;
+                    (<Split[]>pass2).push(<Split>segment);
                 }
             });
             return pass2;
-        };
-        Bezier.prototype.scale = function (d) {
-            var _this = this;
+        }
+
+        public scale(d: Function);
+        public scale(d: number);
+        public scale(d: any) {
             var order = this.order;
-            var distanceFn;
-            if (typeof d === "function") {
-                distanceFn = d;
-            }
-            if (distanceFn && order === 2) {
-                return this.raise().scale(distanceFn);
-            }
+            var distanceFn: (d: number) => number;
+            if (typeof d === "function") { distanceFn = d; }
+            if (distanceFn && order === 2) { return this.raise().scale(distanceFn); }
+
             // TODO: add special handling for degenerate (=linear) curves.
             var clockwise = this.clockwise;
             var r1 = distanceFn ? distanceFn(0) : d;
             var r2 = distanceFn ? distanceFn(1) : d;
-            var v = [this.offset(0, 10), this.offset(1, 10)];
-            var o = BezierJs.utils.lli4(v[0], v[0].c, v[1], v[1].c);
-            if (!o) {
-                throw "cannot scale this curve. Try reducing it first.";
-            }
+            var v: Offset[] = [<Offset>this.offset(0, 10), <Offset>this.offset(1, 10)];
+            var o = utils.lli4(v[0], v[0].c, v[1], v[1].c);
+            if (!o) { throw "cannot scale this curve. Try reducing it first."; }
             // move all points by distance 'd' wrt the origin 'o'
-            var points = this.points, np = [];
+            var points = this.points, np: Point[] = [];
+
             // move end points by fixed distance along normal.
             [0, 1].forEach(function (t) {
-                var p = np[t * order] = BezierJs.utils.copy(points[t * order]);
+                var p: Point = np[t * order] = utils.copy(points[t * order]);
                 p.x += (t ? r2 : r1) * v[t].n.x;
                 p.y += (t ? r2 : r1) * v[t].n.y;
             }.bind(this));
+
             if (!distanceFn) {
                 // move control points to lie on the intersection of the offset
                 // derivative vector, and the origin-through-control vector
-                [0, 1].forEach(function (t) {
-                    if (_this.order === 2 && !!t)
-                        return;
+                [0, 1].forEach((t) => {
+                    if (this.order === 2 && !!t) return;
                     var p = np[t * order];
-                    var d = _this.derivative(t);
+                    var d = this.derivative(t);
                     var p2 = { x: p.x + d.x, y: p.y + d.y };
-                    np[t + 1] = BezierJs.utils.lli4(p, p2, o, points[t + 1]);
+                    np[t + 1] = utils.lli4(p, p2, o, points[t + 1]);
                 }, this);
                 return new Bezier(np);
             }
+
             // move control points by "however much necessary to
             // ensure the correct tangent to endpoint".
-            [0, 1].forEach(function (t) {
-                if (_this.order === 2 && !!t)
-                    return;
+            [0, 1].forEach((t) => {
+                if (this.order === 2 && !!t) return;
                 var p = points[t + 1];
                 var ov = {
                     x: p.x - o.x,
                     y: p.y - o.y
                 };
                 var rc = distanceFn ? distanceFn((t + 1) / order) : d;
-                if (distanceFn && !clockwise)
-                    rc = -rc;
+                if (distanceFn && !clockwise) rc = -rc;
                 var m = sqrt(ov.x * ov.x + ov.y * ov.y);
                 ov.x /= m;
                 ov.y /= m;
                 np[t + 1] = {
                     x: p.x + rc * ov.x,
                     y: p.y + rc * ov.y
-                };
+                }
             }, this);
             return new Bezier(np);
-        };
-        Bezier.prototype.outline = function (d1, d2, d3, d4) {
+        }
+
+        public outline(d1: number, d2?: number, d3?: number, d4?: number) {
             d2 = (typeof d2 === "undefined") ? d1 : d2;
-            var reduced = this.reduce(), len = reduced.length, fcurves = [], bcurves = [], p, alen = 0, tlen = this.length();
+            var reduced = this.reduce() as Bezier[],
+                len = reduced.length,
+                fcurves = [],
+                bcurves = [],
+                p: Point,
+                alen = 0,
+                tlen = this.length();
+
             var graduated = (typeof d3 !== "undefined" && typeof d4 !== "undefined");
+
             function linearDistanceFunction(s, e, tlen, alen, slen) {
                 return function (v) {
                     var f1 = alen / tlen, f2 = (alen + slen) / tlen, d = e - s;
-                    return BezierJs.utils.map(v, 0, 1, s + f1 * d, s + f2 * d);
+                    return utils.map(v, 0, 1, s + f1 * d, s + f2 * d);
                 };
-            }
-            ;
+            };
+
             // form curve oulines
-            reduced.forEach(function (segment) {
+            reduced.forEach(function (segment: Bezier) {
                 slen = segment.length();
                 if (graduated) {
                     fcurves.push(segment.scale(linearDistanceFunction(d1, d3, tlen, alen, slen)));
                     bcurves.push(segment.scale(linearDistanceFunction(-d2, -d4, tlen, alen, slen)));
-                }
-                else {
+                } else {
                     fcurves.push(segment.scale(d1));
                     bcurves.push(segment.scale(-d2));
                 }
                 alen += slen;
             });
+
             // reverse the "return" outline
             bcurves = bcurves.map(function (s) {
                 p = s.points;
-                if (p[3]) {
-                    s.points = [p[3], p[2], p[1], p[0]];
-                }
-                else {
-                    s.points = [p[2], p[1], p[0]];
-                }
+                if (p[3]) { s.points = [p[3], p[2], p[1], p[0]]; }
+                else { s.points = [p[2], p[1], p[0]]; }
                 return s;
             }).reverse();
+
             // form the endcaps as lines
-            var fs = fcurves[0].points[0], fe = fcurves[len - 1].points[fcurves[len - 1].points.length - 1], bs = bcurves[len - 1].points[bcurves[len - 1].points.length - 1], be = bcurves[0].points[0], ls = BezierJs.utils.makeline(bs, fs), le = BezierJs.utils.makeline(fe, be), segments = [ls].concat(fcurves).concat([le]).concat(bcurves), slen = segments.length;
-            return new BezierJs.PolyBezier(segments);
-        };
-        Bezier.prototype.outlineshapes = function (d1, d2) {
+            var fs = fcurves[0].points[0],
+                fe = fcurves[len - 1].points[fcurves[len - 1].points.length - 1],
+                bs = bcurves[len - 1].points[bcurves[len - 1].points.length - 1],
+                be = bcurves[0].points[0],
+                ls = utils.makeline(bs, fs),
+                le = utils.makeline(fe, be),
+                segments = [ls].concat(fcurves).concat([le]).concat(bcurves),
+                slen = segments.length;
+
+            return new PolyBezier(segments);
+        }
+
+        public outlineshapes(d1: number, d2: number) {
             d2 = d2 || d1;
             var outline = this.outline(d1, d2).curves;
             var shapes = [];
             for (var i = 1, len = outline.length; i < len / 2; i++) {
-                var shape = BezierJs.utils.makeshape(outline[i], outline[len - i]);
+                var shape = utils.makeshape(outline[i], outline[len - i]);
                 shape.startcap.virtual = (i > 1);
                 shape.endcap.virtual = (i < len / 2 - 1);
                 shapes.push(shape);
             }
             return shapes;
-        };
-        Bezier.prototype.intersects = function (item) {
-            if (!item)
-                return this.selfintersects();
-            var line = item;
+        }
+
+        public intersects(curve: Bezier);
+        public intersects(curve: Line);
+        public intersects(item: any) {
+            if (!item) return this.selfintersects();
+            var line = item as Line;
             if (line.p1 && line.p2) {
                 return this.lineIntersects(line);
             }
-            var curve;
-            if (item instanceof Bezier) {
-                curve = item.reduce();
-            }
-            return this.curveintersects(this.reduce(), curve);
-        };
-        Bezier.prototype.lineIntersects = function (line) {
-            var mx = min(line.p1.x, line.p2.x), my = min(line.p1.y, line.p2.y), MX = max(line.p1.x, line.p2.x), MY = max(line.p1.y, line.p2.y), self = this;
-            return BezierJs.utils.roots(this.points, line).filter(function (t) {
+            var curve: Bezier[];
+            if (item instanceof Bezier) { curve = (<Bezier>item).reduce() as Bezier[]; }
+            return this.curveintersects(this.reduce() as Bezier[], curve);
+        }
+
+        public lineIntersects(line: Line) {
+            var mx = min(line.p1.x, line.p2.x),
+                my = min(line.p1.y, line.p2.y),
+                MX = max(line.p1.x, line.p2.x),
+                MY = max(line.p1.y, line.p2.y),
+                self = this;
+            return utils.roots(this.points, line).filter(function (t) {
                 var p = self.get(t);
-                return BezierJs.utils.between(p.x, mx, MX) && BezierJs.utils.between(p.y, my, MY);
+                return utils.between(p.x, mx, MX) && utils.between(p.y, my, MY);
             });
-        };
-        Bezier.prototype.selfintersects = function () {
+        }
+
+        public selfintersects() {
             var reduced = this.reduce();
             // "simple" curves cannot intersect with their direct
             // neighbour, so for each segment X we check whether
@@ -713,8 +837,9 @@ var BezierJs;
                 results = results.concat(result);
             }
             return results;
-        };
-        Bezier.prototype.curveintersects = function (c1, c2) {
+        }
+
+        public curveintersects(c1: Bezier[], c2: Bezier[]) {
             var pairs = [];
             // step 1: pair off any overlapping segments
             c1.forEach(function (l) {
@@ -727,49 +852,65 @@ var BezierJs;
             // step 2: for each pairing, run through the convergence algorithm.
             var intersections = [];
             pairs.forEach(function (pair) {
-                var result = BezierJs.utils.pairiteration(pair.left, pair.right);
+                var result = utils.pairiteration(pair.left, pair.right);
                 if (result.length > 0) {
                     intersections = intersections.concat(result);
                 }
             });
             return intersections;
-        };
-        Bezier.prototype.arcs = function (errorThreshold) {
+        }
+
+        public arcs(errorThreshold?: number) {
             errorThreshold = errorThreshold || 0.5;
             var circles = [];
             return this._iterate(errorThreshold, circles);
-        };
-        Bezier.prototype._error = function (pc, np1, s, e) {
-            var q = (e - s) / 4, c1 = this.get(s + q), c2 = this.get(e - q), ref = BezierJs.utils.dist(pc, np1), d1 = BezierJs.utils.dist(pc, c1), d2 = BezierJs.utils.dist(pc, c2);
+        }
+
+        private _error(pc: Point, np1: Point, s: number, e: number) {
+            var q = (e - s) / 4,
+                c1 = this.get(s + q),
+                c2 = this.get(e - q),
+                ref = utils.dist(pc, np1),
+                d1 = utils.dist(pc, c1),
+                d2 = utils.dist(pc, c2);
             return abs(d1 - ref) + abs(d2 - ref);
-        };
-        Bezier.prototype._iterate = function (errorThreshold, circles) {
+        }
+
+        private _iterate(errorThreshold: number, circles: Arc[]) {
             var s = 0, e = 1, safety;
             // we do a binary search to find the "good `t` closest to no-longer-good"
             do {
                 safety = 0;
+
                 // step 1: start with the maximum possible arc
                 e = 1;
+
                 // points:
-                var np1 = this.get(s), np2, np3, arc, prev_arc;
+                var np1 = this.get(s), np2, np3, arc: Arc, prev_arc: Arc;
+
                 // booleans:
                 var curr_good = false, prev_good = false, done;
+
                 // numbers:
                 var m = e, prev_e = 1, step = 0;
+
                 // step 2: find the best possible arc
                 do {
                     prev_good = curr_good;
                     prev_arc = arc;
                     m = (s + e) / 2;
                     step++;
+
                     np2 = this.get(m);
                     np3 = this.get(e);
-                    arc = BezierJs.utils.getccenter(np1, np2, np3);
+
+                    arc = utils.getccenter(np1, np2, np3);
                     var error = this._error(arc, np1, s, e);
                     curr_good = (error <= errorThreshold);
+
                     done = prev_good && !curr_good;
-                    if (!done)
-                        prev_e = e;
+                    if (!done) prev_e = e;
+
                     // this arc is fine: we can move 'e' up to see if we can find a wider arc
                     if (curr_good) {
                         // if e is already at max, then we're done for this arc.
@@ -781,24 +922,29 @@ var BezierJs;
                         // if not, move it up by half the iteration distance
                         e = e + (e - s) / 2;
                     }
+
+                    // this is a bad arc: we need to move 'e' down to find a good arc
                     else {
                         e = m;
                     }
-                } while (!done && safety++ < 100);
+                }
+                while (!done && safety++ < 100);
+
                 if (safety >= 100) {
                     console.error("arc abstraction somehow failed...");
                     break;
                 }
+
                 // console.log("[F] arc found", s, prev_e, prev_arc.x, prev_arc.y, prev_arc.s, prev_arc.e);
+
                 prev_arc = (prev_arc ? prev_arc : arc);
                 circles.push(prev_arc);
                 s = prev_e;
-            } while (e < 1);
+            }
+            while (e < 1);
             return circles;
-        };
-        return Bezier;
-    })();
-    BezierJs.Bezier = Bezier;
-})(BezierJs || (BezierJs = {}));
+        }
+    }
+}
+
 module.exports = BezierJs;
-//# sourceMappingURL=bezier.js.map

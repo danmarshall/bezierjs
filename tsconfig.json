@@ -1,0 +1,13 @@
+﻿{
+  "compilerOptions": {
+    "declaration": true,
+    "outFile": "bezier.js",
+    "sourceMap": false
+  },
+  "files": [
+    "typings/tsd.d.ts",
+    "lib/bezier.ts",
+    "lib/utils.ts",
+    "lib/poly-bezier.ts"
+  ]
+}
