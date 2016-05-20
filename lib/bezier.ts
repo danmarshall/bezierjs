@@ -24,7 +24,7 @@ module BezierJs {
     export interface Inflection {
         x: number[];
         y: number[];
-        z: number[];
+        z?: number[];
         values: number[];
     }
 
@@ -467,6 +467,10 @@ module BezierJs {
             return ret;
         }
 
+        public inflections() {
+            return utils.inflections(this.points);
+        }
+
         public normal(t: number) {
             return this._3d ? this.__normal3(t) : this.__normal2(t);
         }
@@ -563,13 +567,15 @@ module BezierJs {
             return subsplit.left;
         }
 
-        public inflections() {
+        public extrema() {
             var dims = this.dims,
-                result: Inflection = { x: [], y: [], z: [], values: [] },
-                roots = [],
+                result: Inflection = { x: [], y: [], values: [] },
+                roots: number[] = [],
                 p, mfn;
-            dims.forEach((dim) => {
-                mfn = function (v) { return v[dim]; };
+            dims.forEach((dim: string) => {
+                mfn = function (v: Point[]) {
+                    return v[dim];
+                };
                 p = this.dpoints[0].map(mfn);
                 result[dim] = utils.droots(p);
                 if (this.order === 3) {
@@ -578,16 +584,16 @@ module BezierJs {
                 }
                 result[dim] = result[dim].filter(function (t) { return (t >= 0 && t <= 1); });
                 roots = roots.concat(result[dim].sort());
-            }, this);
+            });
             roots.sort();
             result.values = roots;
             return result;
         }
 
         public bbox() {
-            var inflections = this.inflections(), result = {};
+            var extrema = this.extrema(), result = {};
             this.dims.forEach((d: string) => {
-                result[d] = utils.getminmax(this, d, inflections[d]);
+                result[d] = utils.getminmax(this, d, extrema[d]);
             }, this);
             return result as BBox;
         }
@@ -646,16 +652,16 @@ module BezierJs {
         }
 
         public reduce() {
-            var i, t1 = 0, t2 = 0, step = 0.01, segment: Split | Bezier, pass1 = [], pass2: Split[] | Bezier[] = [];
-            // first pass: split on inflections
-            var inflections = this.inflections().values;
-            if (inflections.indexOf(0) === -1) { inflections = [0].concat(inflections); }
-            if (inflections.indexOf(1) === -1) { inflections.push(1); }
-            for (t1 = inflections[0], i = 1; i < inflections.length; i++) {
-                t2 = inflections[i];
+            var i, t1 = 0, t2 = 0, step = 0.01, segment: Split | Bezier, pass1 = [], pass2 = [];
+            // first pass: split on extrema
+            var extrema = this.extrema().values;
+            if (extrema.indexOf(0) === -1) { extrema = [0].concat(extrema); }
+            if (extrema.indexOf(1) === -1) { extrema.push(1); }
+            for (t1 = extrema[0], i = 1; i < extrema.length; i++) {
+                t2 = extrema[i];
                 segment = this.split(t1, t2);
-                (<Split>segment)._t1 = t1;
-                (<Split>segment)._t2 = t2;
+                segment._t1 = t1;
+                segment._t2 = t2;
                 pass1.push(segment);
                 t1 = t2;
             }
@@ -673,9 +679,9 @@ module BezierJs {
                                 return [];
                             }
                             segment = p1.split(t1, t2);
-                            (<Split>segment)._t1 = utils.map(t1, 0, 1, p1._t1, p1._t2);
-                            (<Split>segment)._t2 = utils.map(t2, 0, 1, p1._t1, p1._t2);
-                            (<Split[]>pass2).push(<Split>segment);
+                            segment._t1 = utils.map(t1, 0, 1, p1._t1, p1._t2);
+                            segment._t2 = utils.map(t2, 0, 1, p1._t1, p1._t2);
+                            pass2.push(segment);
                             t1 = t2;
                             break;
                         }
@@ -683,9 +689,9 @@ module BezierJs {
                 }
                 if (t1 < 1) {
                     segment = p1.split(t1, 1);
-                    (<Split>segment)._t1 = utils.map(t1, 0, 1, p1._t1, p1._t2);
-                    (<Split>segment)._t2 = p1._t2;
-                    (<Split[]>pass2).push(<Split>segment);
+                    segment._t1 = utils.map(t1, 0, 1, p1._t1, p1._t2);
+                    segment._t2 = p1._t2;
+                    pass2.push(segment);
                 }
             });
             return pass2;
@@ -895,7 +901,7 @@ module BezierJs {
         }
 
         private _iterate(errorThreshold: number, circles: Arc[]) {
-            var s = 0, e = 1, safety;
+            var s = 0, e = 1, safety: number;
             // we do a binary search to find the "good `t` closest to no-longer-good"
             do {
                 safety = 0;
@@ -904,10 +910,10 @@ module BezierJs {
                 e = 1;
 
                 // points:
-                var np1 = this.get(s), np2, np3, arc: Arc, prev_arc: Arc;
+                var np1 = this.get(s), np2: Point, np3: Point, arc: Arc, prev_arc: Arc;
 
                 // booleans:
-                var curr_good = false, prev_good = false, done;
+                var curr_good = false, prev_good = false, done: boolean;
 
                 // numbers:
                 var m = e, prev_e = 1, step = 0;
