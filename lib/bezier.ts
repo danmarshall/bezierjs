@@ -107,9 +107,9 @@ module BezierJs {
      */
     export class Bezier {
 
-        private clockwise: boolean;
         private _linear: boolean;
 
+        public clockwise: boolean;
         public _3d: boolean;
         public _t1: number;
         public _t2: number;
@@ -539,10 +539,12 @@ module BezierJs {
             return q;
         }
 
+        public split(t1: number): Split;
+        public split(t1: number, t2: number): Bezier;
         public split(t1: number, t2?: number): Bezier | Split {
             // shortcuts
-            if (t1 === 0 && !!t2) { return (<Split>this.split(t2)).left; }
-            if (t2 === 1) { return (<Split>this.split(t1)).right; }
+            if (t1 === 0 && !!t2) { return this.split(t2).left; }
+            if (t2 === 1) { return this.split(t1).right; }
 
             // no shortcut: use "de Casteljau" iteration.
             var q = this.hull(t1);
@@ -563,7 +565,7 @@ module BezierJs {
 
             // if we have a t2, split again:
             t2 = utils.map(t2, t1, 1, 0, 1);
-            var subsplit = result.right.split(t2) as Split;
+            var subsplit = result.right.split(t2);
             return subsplit.left;
         }
 

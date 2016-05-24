@@ -79,8 +79,8 @@ declare module BezierJs {
      *
      */
     class Bezier {
-        private clockwise;
         private _linear;
+        clockwise: boolean;
         _3d: boolean;
         _t1: number;
         _t2: number;
@@ -120,7 +120,8 @@ declare module BezierJs {
         private __normal3(t);
         private __normal(t);
         hull(t: number): Point[];
-        split(t1: number, t2?: number): Bezier | Split;
+        split(t1: number): Split;
+        split(t1: number, t2: number): Bezier;
         extrema(): Inflection;
         bbox(): BBox;
         overlaps(curve: Bezier): boolean;
