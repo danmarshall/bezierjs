@@ -123,7 +123,7 @@ module BezierJs {
 
         constructor(points: Point[]);
         constructor(coords: number[]);
-        constructor(n1: number, n2: number, n3: number, n4: number, n5: number, n6: number, n7: number, n8: number);
+        constructor(x1: number, y1: number, x2: number, y2: number, x3: number, y3: number, x4?: number, y4?: number);
         constructor(p1: Point, p2: Point, p3: Point, p4?: Point);
         constructor(coords: any) {
             var args = (coords && coords.forEach) ? coords : [].slice.call(arguments);
