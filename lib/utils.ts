@@ -242,7 +242,7 @@ module BezierJs.utils {
         }
     }
 
-    export function shapeintersections(s1: Shape, bbox1: BBox, s2: Shape, bbox2: BBox): string[][] | number[][] {
+    export function shapeintersections(s1: Shape, bbox1: BBox, s2: Shape, bbox2: BBox, curveIntersectionThreshold?: number): string[][] | number[][] {
         if (!utils.bboxoverlap(bbox1, bbox2)) return [];
         var intersections = [];
         var a1 = [s1.startcap, s1.forward, s1.back, s1.endcap];
@@ -251,7 +251,7 @@ module BezierJs.utils {
             if ((<BezierCap>l1).virtual) return;
             a2.forEach(function (l2) {
                 if ((<BezierCap>l2).virtual) return;
-                var iss = l1.intersects(l2);
+                var iss = l1.intersects(l2, curveIntersectionThreshold);
                 if (iss.length > 0) {
                     iss['c1'] = l1;
                     iss['c2'] = l2;
@@ -264,19 +264,19 @@ module BezierJs.utils {
         return intersections;
     }
 
-    export function makeshape(forward: Bezier, back: Bezier): Shape {
+    export function makeshape(forward: Bezier, back: Bezier, curveIntersectionThreshold?: number): Shape {
         var bpl = back.points.length;
         var fpl = forward.points.length;
         var start = utils.makeline(back.points[bpl - 1], forward.points[0]) as BezierCap;
         var end = utils.makeline(forward.points[fpl - 1], back.points[0]) as BezierCap;
-        var shape = {
+        var shape: Shape = {
             startcap: start,
             forward: forward,
             back: back,
             endcap: end,
             bbox: utils.findbbox([start, forward, back, end]),
             intersections: function (s2) {
-                return shapeintersections(shape, shape.bbox, s2, s2.bbox);
+                return shapeintersections(shape, shape.bbox, s2, s2.bbox, curveIntersectionThreshold);
             }
         };
         return shape;
@@ -452,12 +452,11 @@ module BezierJs.utils {
         if (bbox.z) { bbox.z.size = bbox.z.max - bbox.z.min; }
     }
 
-    export function pairiteration(c1: Bezier, c2: Bezier) {
+    export function pairiteration(c1: Bezier, c2: Bezier, curveIntersectionThreshold = 0.5) {
         var c1b = c1.bbox(),
             c2b = c2.bbox(),
-            r = 100000,
-            threshold = 0.5;
-        if (c1b.x.size + c1b.y.size < threshold && c2b.x.size + c2b.y.size < threshold) {
+            r = 100000;
+        if (c1b.x.size + c1b.y.size < curveIntersectionThreshold && c2b.x.size + c2b.y.size < curveIntersectionThreshold) {
             return [((r * (c1._t1 + c1._t2) / 2) | 0) / r + "/" + ((r * (c2._t1 + c2._t2) / 2) | 0) / r];
         }
         var cc1 = c1.split(0.5) as Split,
@@ -474,7 +473,7 @@ module BezierJs.utils {
         if (pairs.length === 0) return results;
         pairs.forEach(function (pair) {
             results = results.concat(
-                utils.pairiteration(pair.left, pair.right)
+                utils.pairiteration(pair.left, pair.right, curveIntersectionThreshold)
             );
         })
         results = results.filter(function (v, i) {

@@ -74,6 +74,7 @@ module BezierJs {
         back: Bezier;
         endcap: BezierCap;
         bbox: BBox;
+        intersections: (shape: Shape) => string[][] | number[][];
     }
 
     export interface ABC {
@@ -812,12 +813,12 @@ module BezierJs {
             return new PolyBezier(segments);
         }
 
-        public outlineshapes(d1: number, d2: number) {
+        public outlineshapes(d1: number, d2: number, curveIntersectionThreshold?: number) {
             d2 = d2 || d1;
             var outline = this.outline(d1, d2).curves;
             var shapes: Shape[] = [];
             for (var i = 1, len = outline.length; i < len / 2; i++) {
-                var shape = utils.makeshape(outline[i], outline[len - i]);
+                var shape = utils.makeshape(outline[i], outline[len - i], curveIntersectionThreshold);
                 shape.startcap.virtual = (i > 1);
                 shape.endcap.virtual = (i < len / 2 - 1);
                 shapes.push(shape);
@@ -825,9 +826,9 @@ module BezierJs {
             return shapes;
         }
 
-        public intersects(curve: Bezier): string[] | number[];
+        public intersects(curve: Bezier, curveIntersectionThreshold?: number): string[] | number[];
         public intersects(curve: Line): string[] | number[];
-        public intersects(item: any): string[] | number[] {
+        public intersects(item: any, curveIntersectionThreshold?: number): string[] | number[] {
             if (!item) return this.selfintersects();
             var line = item as Line;
             if (line.p1 && line.p2) {
@@ -835,7 +836,7 @@ module BezierJs {
             }
             var curve: Bezier[];
             if (item instanceof Bezier) { curve = (<Bezier>item).reduce() as Bezier[]; }
-            return this.curveintersects(this.reduce() as Bezier[], curve);
+            return this.curveintersects(this.reduce() as Bezier[], curve, curveIntersectionThreshold);
         }
 
         public lineIntersects(line: Line) {
@@ -850,7 +851,7 @@ module BezierJs {
             });
         }
 
-        public selfintersects() {
+        public selfintersects(curveIntersectionThreshold?: number) {
             var reduced = this.reduce();
             // "simple" curves cannot intersect with their direct
             // neighbour, so for each segment X we check whether
@@ -859,13 +860,13 @@ module BezierJs {
             for (i = 0; i < len; i++) {
                 left = reduced.slice(i, i + 1);
                 right = reduced.slice(i + 2);
-                result = this.curveintersects(left, right);
+                result = this.curveintersects(left, right, curveIntersectionThreshold);
                 results = results.concat(result);
             }
             return results;
         }
 
-        public curveintersects(c1: Bezier[], c2: Bezier[]) {
+        public curveintersects(c1: Bezier[], c2: Bezier[], curveIntersectionThreshold?: number) {
             var pairs = [];
             // step 1: pair off any overlapping segments
             c1.forEach(function (l) {
@@ -878,7 +879,7 @@ module BezierJs {
             // step 2: for each pairing, run through the convergence algorithm.
             var intersections: string[] = [];
             pairs.forEach(function (pair) {
-                var result = utils.pairiteration(pair.left, pair.right);
+                var result = utils.pairiteration(pair.left, pair.right, curveIntersectionThreshold);
                 if (result.length > 0) {
                     intersections = intersections.concat(result);
                 }
