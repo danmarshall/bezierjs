@@ -2,6 +2,7 @@ var Bezier = require("./lib/bezier");
 var utils = Bezier.getUtils();
 var assert = require("chai").use(require("chai-stats")).assert;
 
+
 // plain and SVG quadratic check
 (function testQuadratic() {
   [
@@ -202,4 +203,13 @@ var assert = require("chai").use(require("chai-stats")).assert;
   Bp = b.get(t);
   assert(utils.approximately(B.x, Bp.x), "cubic B and computed B have same x coordinate with t="+t);
   assert(utils.approximately(B.y, Bp.y), "cubic B and computed B have same y coordinate with t="+t);
+}());
+
+(function testExtrema() {
+  var B = new Bezier(330,592, 330,557, 315,522, 315,485);
+  var e = B.extrema().values;
+  assert(e.length === 3, "Extrema test curve has three extrema");
+  assert(e[0] === 0, "Extrema test curve value 1 is zero");
+  assert(e[1] === 0.5, "Extrema test curve value 2 is one half");
+  assert(e[2] === 1, "Extrema test curve value 3 is one");
 }());
