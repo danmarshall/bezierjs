@@ -552,7 +552,7 @@ var BezierJs;
                 while (t2 <= 1) {
                     for (t2 = t1 + step; t2 <= 1 + step; t2 += step) {
                         segment = p1.split(t1, t2);
-                        if (!segment.simple()) {
+                        if (!(segment).simple()) {
                             t2 -= step;
                             if (abs(t1 - t2) < step) {
                                 // we can never form a reduction

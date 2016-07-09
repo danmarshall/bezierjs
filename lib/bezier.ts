@@ -655,7 +655,7 @@ module BezierJs {
         }
 
         public reduce() {
-            var i, t1 = 0, t2 = 0, step = 0.01, segment: Split | Bezier, pass1 = [], pass2 = [];
+            var i: number, t1 = 0, t2 = 0, step = 0.01, segment: Bezier, pass1: Bezier[] = [], pass2: Bezier[] = [];
             // first pass: split on extrema
             var extrema = this.extrema().values;
             if (extrema.indexOf(0) === -1) { extrema = [0].concat(extrema); }
@@ -675,7 +675,7 @@ module BezierJs {
                 while (t2 <= 1) {
                     for (t2 = t1 + step; t2 <= 1 + step; t2 += step) {
                         segment = p1.split(t1, t2);
-                        if (!(<Bezier>segment).simple()) {
+                        if (!(segment).simple()) {
                             t2 -= step;
                             if (abs(t1 - t2) < step) {
                                 // we can never form a reduction
