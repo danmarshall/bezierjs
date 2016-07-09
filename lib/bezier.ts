@@ -764,8 +764,8 @@ module BezierJs {
             d2 = (typeof d2 === "undefined") ? d1 : d2;
             var reduced = this.reduce(),
                 len = reduced.length,
-                fcurves = [],
-                bcurves = [],
+                fcurves: Bezier[] = [],
+                bcurves: Bezier[] = [],
                 p: Point,
                 alen = 0,
                 tlen = this.length();
