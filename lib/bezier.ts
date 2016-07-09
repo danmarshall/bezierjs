@@ -634,8 +634,8 @@ module BezierJs {
                 });
                 return [new Bezier(coords)];
             }
-            var reduced = this.reduce() as Bezier[];
-            return reduced.map(function (s: Bezier) {
+            var reduced = this.reduce();
+            return reduced.map(function (s) {
                 return s.scale(t);
             });
         }
@@ -762,7 +762,7 @@ module BezierJs {
 
         public outline(d1: number, d2?: number, d3?: number, d4?: number) {
             d2 = (typeof d2 === "undefined") ? d1 : d2;
-            var reduced = this.reduce() as Bezier[],
+            var reduced = this.reduce(),
                 len = reduced.length,
                 fcurves = [],
                 bcurves = [],
@@ -780,7 +780,7 @@ module BezierJs {
             };
 
             // form curve oulines
-            reduced.forEach(function (segment: Bezier) {
+            reduced.forEach(function (segment) {
                 slen = segment.length();
                 if (graduated) {
                     fcurves.push(segment.scale(linearDistanceFunction(d1, d3, tlen, alen, slen)));
@@ -835,8 +835,8 @@ module BezierJs {
                 return this.lineIntersects(line);
             }
             var curve: Bezier[];
-            if (item instanceof Bezier) { curve = (<Bezier>item).reduce() as Bezier[]; }
-            return this.curveintersects(this.reduce() as Bezier[], curve, curveIntersectionThreshold);
+            if (item instanceof Bezier) { curve = (<Bezier>item).reduce(); }
+            return this.curveintersects(this.reduce(), curve, curveIntersectionThreshold);
         }
 
         public lineIntersects(line: Line) {
